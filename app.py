@@ -486,5 +486,47 @@ def reset_password():
             return jsonify({'error': 'Failed to update password'}), 500
     return jsonify({'error': 'Invalid or expired reset code'}), 400
 
+
+# Get user watchlist and watched counts
+@app.route('/api/user/<user_id>/counts', methods=['GET'])
+def get_user_counts(user_id):
+    try:
+        # Count watchlist items
+        watchlist_movies = db.watchlist.count_documents({
+            'user_id': user_id,
+            'item_type': 'movie'
+        })
+        watchlist_tv = db.watchlist.count_documents({
+            'user_id': user_id,
+            'item_type': 'tv'
+        })
+
+        # Count watched items
+        watched_movies = db.watched.count_documents({
+            'user_id': user_id,
+            'item_type': 'movie'
+        })
+        watched_tv = db.watched.count_documents({
+            'user_id': user_id,
+            'item_type': 'tv'
+        })
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'watchlist': {
+                    'movies': watchlist_movies,
+                    'tvShows': watchlist_tv
+                },
+                'watched': {
+                    'movies': watched_movies,
+                    'tvShows': watched_tv
+                }
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch counts: {str(e)}'}), 500
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8080)
