@@ -1,0 +1,366 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:bingebuddy/models/watchlist_item.dart';
+import 'package:bingebuddy/providers/auth_provider.dart';
+import 'package:bingebuddy/services/api_service.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+
+class WatchlistScreen extends StatefulWidget {
+  const WatchlistScreen({super.key});
+
+  @override
+  _WatchlistScreenState createState() => _WatchlistScreenState();
+}
+
+class _WatchlistScreenState extends State<WatchlistScreen> {
+  final ApiService _apiService = ApiService();
+  List<WatchlistItem> _watchlist = [];
+  bool _isLoading = false;
+  String? _errorMessage;
+  String _selectedFilter = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWatchlist();
+  }
+
+  Future<void> _fetchWatchlist() async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final watchlist = await _apiService.getWatchlist(user.userId);
+      setState(() {
+        _watchlist = watchlist;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching watchlist: $e');
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error fetching watchlist: $e';
+      });
+    }
+  }
+
+  Future<void> _removeFromWatchlist(WatchlistItem item) async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null || item.id == null) return;
+
+    try {
+      final response = await _apiService.removeFromWatchlist(user.userId, item.itemId, item.itemType);
+      if (response['status'] == 'success') {
+        setState(() {
+          _watchlist.remove(item);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Removed ${item.metadata['title']} from watchlist!')),
+        );
+      } else {
+        setState(() {
+          _errorMessage = response['error'] ?? 'Failed to remove item';
+        });
+      }
+    } catch (e) {
+      print('Error removing from watchlist: $e');
+      setState(() {
+        _errorMessage = 'Error removing from watchlist: $e';
+      });
+    }
+  }
+
+  Future<void> _updatePriority(WatchlistItem item, double priority) async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null || item.id == null) return;
+
+    final updatedItem = WatchlistItem(
+      id: item.id,
+      itemId: item.itemId,
+      itemType: item.itemType,
+      priority: priority.round().clamp(1, 5),
+      metadata: item.metadata,
+    );
+
+    try {
+      final response = await _apiService.updateWatchlistItem(item.id!, updatedItem);
+      if (response['status'] == 'success') {
+        setState(() {
+          final index = _watchlist.indexOf(item);
+          if (index != -1) _watchlist[index] = updatedItem;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Priority updated!')),
+        );
+      } else {
+        setState(() {
+          _errorMessage = response['error'] ?? 'Failed to update priority';
+        });
+      }
+    } catch (e) {
+      print('Error updating priority: $e');
+      setState(() {
+        _errorMessage = 'Error updating priority: $e';
+      });
+    }
+  }
+
+  List<WatchlistItem> _getItemsByPriorityRange(int min, int max) {
+    return _watchlist
+        .where((item) => item.priority >= min && item.priority <= max)
+        .toList()
+      ..sort((a, b) => b.priority.compareTo(a.priority));
+  }
+
+  Widget _buildPrioritySection(String title, String subtitle, int minPriority, int maxPriority) {
+    final items = _getItemsByPriorityRange(minPriority, maxPriority);
+    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) return const SizedBox.shrink();
+
+    // Show only if filter matches or no filter is applied
+    if (_selectedFilter == 'Low' && minPriority != 1) return const SizedBox.shrink();
+    if (_selectedFilter == 'Medium' && minPriority != 2) return const SizedBox.shrink();
+    if (_selectedFilter == 'High' && minPriority != 4) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.bookmark_border, color: Color(0xFF12CDC9), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFFEAEAEA),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Color(0xFF92929D), fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.7,
+            crossAxisSpacing: 8.0,
+            mainAxisSpacing: 8.0,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            final title = item.metadata['title'] ?? 'Unknown';
+            final imageUrl = item.metadata['poster_path'] != null
+                ? 'https://image.tmdb.org/t/p/w500${item.metadata['poster_path']}'
+                : null;
+            return Card(
+              color: Color(0xFF252736),
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: imageUrl != null
+                        ? Image.network(
+                            imageUrl,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Color(0xFFEAEAEA)),
+                          )
+                        : const Icon(Icons.image_not_supported, color: Color(0xFFEAEAEA)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$title (${item.itemType})',
+                          style: const TextStyle(color: Color(0xFFEAEAEA)),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Row(
+                          children: [
+                            const Text(
+                              'Priority: ',
+                              style: TextStyle(color: Color(0xFF92929D), fontSize: 12),
+                            ),
+                            RatingBar.builder(
+                              initialRating: item.priority.toDouble(),
+                              minRating: 1,
+                              maxRating: 5,
+                              direction: Axis.horizontal,
+                              allowHalfRating: false,
+                              itemCount: 5,
+                              itemSize: 20,
+                              itemBuilder: (context, _) => const Icon(
+                                Icons.star,
+                                color: Color(0xFF12CDC9),
+                              ),
+                              onRatingUpdate: (rating) {
+                                _updatePriority(item, rating);
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF12CDC9)),
+                    onPressed: () => _removeFromWatchlist(item),
+                    tooltip: 'Remove from Watchlist',
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Binge List', style: TextStyle(color: Color(0xFFFFFFFF))),
+        backgroundColor: const Color(0xFF1F1D2B),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFFFFFFFF)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          if (authProvider.user != null)
+            IconButton(
+              icon: const Icon(Icons.logout, color: Color(0xFFFFFFFF)),
+              onPressed: () async {
+                await authProvider.logout();
+                Navigator.pushReplacementNamed(context, '/login');
+              },
+            ),
+        ],
+      ),
+      body: Container(
+        color: const Color(0xFF1F1D2B),
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.bookmark_border, color: Color(0xFF12CDC9), size: 24),
+                      SizedBox(width: 8),
+                      Text(
+                        'Your Binge List: To Watch',
+                        style: TextStyle(
+                          color: Color(0xFFEAEAEA),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Plan and prioritize your next binge',
+                    style: TextStyle(color: Color(0xFF92929D), fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => setState(() => _selectedFilter = 'Low'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedFilter == 'Low' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                      foregroundColor: Color(0xFFEAEAEA),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Low (1)'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _selectedFilter = 'Medium'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedFilter == 'Medium' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                      foregroundColor: Color(0xFFEAEAEA),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Medium (2-3)'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _selectedFilter = 'High'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedFilter == 'High' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                      foregroundColor: Color(0xFFEAEAEA),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('High (4-5)'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF12CDC9)))
+                  : _errorMessage != null
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_errorMessage!, style: const TextStyle(color: Color(0xFFEAEAEA))),
+                              TextButton(
+                                onPressed: _fetchWatchlist,
+                                child: const Text('Retry', style: TextStyle(color: Color(0xFF12CDC9))),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _watchlist.isEmpty
+                          ? const Center(child: Text('Your watchlist is empty', style: TextStyle(color: Color(0xFFEAEAEA))))
+                          : ListView(
+                              padding: const EdgeInsets.all(8.0),
+                              children: [
+                                _buildPrioritySection('High Priority', 'Watch Soon', 4, 5),
+                                _buildPrioritySection('Medium Priority', 'Watch Next', 2, 3),
+                                _buildPrioritySection('Low Priority', 'Watch Later', 1, 1),
+                              ],
+                            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
