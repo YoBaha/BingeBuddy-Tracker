@@ -270,7 +270,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
     );
-    print('Forgot password response: ${response.body}'); // Debug log
+    print('Forgot password response: ${response.body}');
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
@@ -287,10 +287,30 @@ class ApiService {
         'new_password': newPassword,
       }),
     );
-    print('Reset password response: ${response.body}'); // Debug log
+    print('Reset password response: ${response.body}');
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to reset password: ${response.body}');
   }
+
+  // BingeBuddy: Get user counts for watchlist and watched items
+Future<Map<String, dynamic>> getUserCounts(String userId) async {
+  try {
+    final response = await http.get(Uri.parse('$baseUrl/user/$userId/counts'));
+    print('Requesting user counts: $baseUrl/user/$userId/counts');
+    print('Response status: ${response.statusCode}, body: ${response.body}');
+    if (response.statusCode == 200) {
+      final jsonResponse = jsonDecode(response.body);
+      if (jsonResponse['status'] == 'success') {
+        return jsonResponse['data'];
+      }
+      throw Exception('Failed to fetch counts: ${jsonResponse['error']}');
+    }
+    throw Exception('Failed to fetch counts: ${response.body}');
+  } catch (e) {
+    print('Error fetching user counts: $e');
+    rethrow;
+  }
+}
 }

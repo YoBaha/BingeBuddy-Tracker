@@ -18,7 +18,8 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
   List<WatchlistItem> _watchlist = [];
   bool _isLoading = false;
   String? _errorMessage;
-  String _selectedFilter = 'All';
+  String _selectedFilter = 'All'; // Priority filter
+  String _contentType = 'All'; // Content type filter: All, Movies, TV Shows
 
   @override
   void initState() {
@@ -86,7 +87,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     if (user == null || item.id == null) return;
 
     final updatedItem = WatchlistItem(
-      id: item.id, // String? id
+      id: item.id,
       itemId: item.itemId,
       itemType: item.itemType,
       priority: priority.round().clamp(1, 5),
@@ -158,16 +159,23 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     }
   }
 
-  List<WatchlistItem> _getItemsByPriorityRange(int min, int max) {
-    return _watchlist
+  List<WatchlistItem> _getFilteredItems(int min, int max) {
+    var filteredItems = _watchlist
         .where((item) => item.priority >= min && item.priority <= max)
-        .toList()
-      ..sort((a, b) => b.priority.compareTo(a.priority));
+        .toList();
+
+    if (_contentType != 'All') {
+      filteredItems = filteredItems
+          .where((item) => item.itemType == (_contentType == 'Movies' ? 'movie' : 'tv'))
+          .toList();
+    }
+
+    return filteredItems..sort((a, b) => b.priority.compareTo(a.priority));
   }
 
   Widget _buildPrioritySection(String title, String subtitle, int minPriority, int maxPriority) {
-    final items = _getItemsByPriorityRange(minPriority, maxPriority);
-    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) {
+    final items = _getFilteredItems(minPriority, maxPriority);
+    if (items.isEmpty || (_selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter))) {
       return const SizedBox.shrink();
     }
 
@@ -207,7 +215,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             childAspectRatio: 0.7,
@@ -295,6 +303,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF1F1D2B),
       appBar: AppBar(
         title: const Text('My Binge List', style: TextStyle(color: Color(0xFFFFFFFF))),
         backgroundColor: const Color(0xFF1F1D2B),
@@ -347,7 +356,6 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
       ),
       body: Container(
         color: const Color(0xFF1F1D2B),
-        padding: const EdgeInsets.all(8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -378,66 +386,119 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              child: Column(
                 children: [
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'Low'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'Low' ? Color(0xFF12CDC9) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(
+                        value: 'All',
+                        label: Text('All'),
+                        icon: Icon(Icons.all_inclusive),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'Movies',
+                        label: Text('Movies'),
+                        icon: Icon(Icons.movie),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'TV Shows',
+                        label: Text('TV Shows'),
+                        icon: Icon(Icons.tv),
+                      ),
+                    ],
+                    selected: {_contentType},
+                    onSelectionChanged: (newSelection) {
+                      setState(() {
+                        _contentType = newSelection.first;
+                      });
+                    },
+                    style: ButtonStyle(
+                      backgroundColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.selected)) {
+                          return const Color(0xFF12CDC9);
+                        }
+                        return const Color(0xFF252736);
+                      }),
+                      foregroundColor: WidgetStateProperty.all(const Color(0xFFEAEAEA)),
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
-                    child: const Text('Low (1)'),
                   ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'Medium'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'Medium' ? Color(0xFF12CDC9) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Medium (2-3)'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'High'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'High' ? Color(0xFF12CDC9) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('High (4-5)'),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'Low'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'Low' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Low (1)'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'Medium'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'Medium' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Medium (2-3)'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'High'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'High' ? Color(0xFF12CDC9) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('High (4-5)'),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF12CDC9)))
-                  : _errorMessage != null
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_errorMessage!, style: const TextStyle(color: Color(0xFFEAEAEA))),
-                              TextButton(
-                                onPressed: _fetchWatchlist,
-                                child: const Text('Retry', style: TextStyle(color: Color(0xFF12CDC9))),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.of(context).size.height -
+                        AppBar().preferredSize.height -
+                        MediaQuery.of(context).padding.top -
+                        160, // Adjust for header, content type, and priority buttons
+                  ),
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF12CDC9)))
+                      : _errorMessage != null
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_errorMessage!, style: const TextStyle(color: Color(0xFFEAEAEA))),
+                                  TextButton(
+                                    onPressed: _fetchWatchlist,
+                                    child: const Text('Retry', style: TextStyle(color: Color(0xFF12CDC9))),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        )
-                      : _watchlist.isEmpty
-                          ? const Center(child: Text('Your watchlist is empty', style: TextStyle(color: Color(0xFFEAEAEA))))
-                          : ListView(
-                              padding: const EdgeInsets.all(8.0),
-                              children: [
-                                _buildPrioritySection('High Priority', 'Watch Soon', 4, 5),
-                                _buildPrioritySection('Medium Priority', 'Watch Next', 2, 3),
-                                _buildPrioritySection('Low Priority', 'Watch Later', 1, 1),
-                              ],
-                            ),
+                            )
+                          : _watchlist.isEmpty
+                              ? const Center(child: Text('Your watchlist is empty', style: TextStyle(color: Color(0xFFEAEAEA))))
+                              : Column(
+                                  children: [
+                                    _buildPrioritySection('High Priority', 'Watch Soon', 4, 5),
+                                    _buildPrioritySection('Medium Priority', 'Watch Next', 2, 3),
+                                    _buildPrioritySection('Low Priority', 'Watch Later', 1, 1),
+                                    const SizedBox(height: 60),
+                                  ],
+                                ),
+                ),
+              ),
             ),
           ],
         ),

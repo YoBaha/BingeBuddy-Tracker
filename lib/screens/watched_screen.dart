@@ -18,7 +18,8 @@ class _WatchedScreenState extends State<WatchedScreen> {
   List<WatchedItem> _watchedItems = [];
   bool _isLoading = false;
   String? _errorMessage;
-  String _selectedFilter = 'All';
+  String _selectedFilter = 'All'; // Rating filter
+  String _contentType = 'All'; // Content type filter: All, Movies, TV Shows
 
   @override
   void initState() {
@@ -147,16 +148,23 @@ class _WatchedScreenState extends State<WatchedScreen> {
     }
   }
 
-  List<WatchedItem> _getItemsByRatingRange(int min, int max) {
-    return _watchedItems
+  List<WatchedItem> _getFilteredItems(int min, int max) {
+    var filteredItems = _watchedItems
         .where((item) => item.rating >= min && item.rating <= max)
-        .toList()
-      ..sort((a, b) => b.rating.compareTo(a.rating));
+        .toList();
+
+    if (_contentType != 'All') {
+      filteredItems = filteredItems
+          .where((item) => item.itemType == (_contentType == 'Movies' ? 'movie' : 'tv'))
+          .toList();
+    }
+
+    return filteredItems..sort((a, b) => b.rating.compareTo(a.rating));
   }
 
   Widget _buildRatingSection(String title, String subtitle, int minRating, int maxRating) {
-    final items = _getItemsByRatingRange(minRating, maxRating);
-    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) {
+    final items = _getFilteredItems(minRating, maxRating);
+    if (items.isEmpty || (_selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter))) {
       return const SizedBox.shrink();
     }
 
@@ -196,7 +204,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             childAspectRatio: 0.7,
@@ -278,6 +286,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF1F1D2B),
       appBar: AppBar(
         title: const Text('Watched Items', style: TextStyle(color: Color(0xFFFFFFFF))),
         backgroundColor: const Color(0xFF1F1D2B),
@@ -287,7 +296,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share, color: Color(0xFFFFFFFF)),
+            icon: const Icon(Icons.share, color: Color(0xFF4CAF50)),
             onPressed: () async {
               await showModalBottomSheet(
                 context: context,
@@ -330,7 +339,6 @@ class _WatchedScreenState extends State<WatchedScreen> {
       ),
       body: Container(
         color: const Color(0xFF1F1D2B),
-        padding: const EdgeInsets.all(8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -361,66 +369,119 @@ class _WatchedScreenState extends State<WatchedScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              child: Column(
                 children: [
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'Low'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'Low' ? Color(0xFF4CAF50) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(
+                        value: 'All',
+                        label: Text('All'),
+                        icon: Icon(Icons.all_inclusive),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'Movies',
+                        label: Text('Movies'),
+                        icon: Icon(Icons.movie),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'TV Shows',
+                        label: Text('TV Shows'),
+                        icon: Icon(Icons.tv),
+                      ),
+                    ],
+                    selected: {_contentType},
+                    onSelectionChanged: (newSelection) {
+                      setState(() {
+                        _contentType = newSelection.first;
+                      });
+                    },
+                    style: ButtonStyle(
+                      backgroundColor: WidgetStateProperty.resolveWith((states) {
+                        if (states.contains(WidgetState.selected)) {
+                          return const Color(0xFF4CAF50);
+                        }
+                        return const Color(0xFF252736);
+                      }),
+                      foregroundColor: WidgetStateProperty.all(const Color(0xFFEAEAEA)),
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
-                    child: const Text('Low (1)'),
                   ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'Medium'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'Medium' ? Color(0xFF4CAF50) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Medium (2-3)'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _selectedFilter = 'High'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedFilter == 'High' ? Color(0xFF4CAF50) : Color(0xFF252736),
-                      foregroundColor: Color(0xFFEAEAEA),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('High (4-5)'),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'Low'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'Low' ? Color(0xFF4CAF50) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Low (1)'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'Medium'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'Medium' ? Color(0xFF4CAF50) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Medium (2-3)'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => setState(() => _selectedFilter = 'High'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedFilter == 'High' ? Color(0xFF4CAF50) : Color(0xFF252736),
+                          foregroundColor: Color(0xFFEAEAEA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('High (4-5)'),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50)))
-                  : _errorMessage != null
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_errorMessage!, style: const TextStyle(color: Color(0xFFEAEAEA))),
-                              TextButton(
-                                onPressed: _fetchWatchedItems,
-                                child: const Text('Retry', style: TextStyle(color: Color(0xFF4CAF50))),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.of(context).size.height -
+                        AppBar().preferredSize.height -
+                        MediaQuery.of(context).padding.top -
+                        160, // Adjust for header, content type, and rating buttons
+                  ),
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50)))
+                      : _errorMessage != null
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_errorMessage!, style: const TextStyle(color: Color(0xFFEAEAEA))),
+                                  TextButton(
+                                    onPressed: _fetchWatchedItems,
+                                    child: const Text('Retry', style: TextStyle(color: Color(0xFF4CAF50))),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        )
-                      : _watchedItems.isEmpty
-                          ? const Center(child: Text('No watched items', style: TextStyle(color: Color(0xFFEAEAEA))))
-                          : ListView(
-                              padding: const EdgeInsets.all(8.0),
-                              children: [
-                                _buildRatingSection('High Rating', 'Rated 4-5 stars', 4, 5),
-                                _buildRatingSection('Medium Rating', 'Rated 2-3 stars', 2, 3),
-                                _buildRatingSection('Low Rating', 'Rated 1 star', 1, 1),
-                              ],
-                            ),
+                            )
+                          : _watchedItems.isEmpty
+                              ? const Center(child: Text('No watched items', style: TextStyle(color: Color(0xFFEAEAEA))))
+                              : Column(
+                                  children: [
+                                    _buildRatingSection('High Rating', 'Rated 4-5 stars', 4, 5),
+                                    _buildRatingSection('Medium Rating', 'Rated 2-3 stars', 2, 3),
+                                    _buildRatingSection('Low Rating', 'Rated 1 star', 1, 1),
+                                    const SizedBox(height: 60),
+                                  ],
+                                ),
+                ),
+              ),
             ),
           ],
         ),
