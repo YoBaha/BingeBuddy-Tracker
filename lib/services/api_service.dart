@@ -125,7 +125,7 @@ class ApiService {
     throw Exception('Failed to remove from watchlist: ${response.body}');
   }
 
-  Future<Map<String, dynamic>> updateWatchlistItem(int id, WatchlistItem item) async {
+  Future<Map<String, dynamic>> updateWatchlistItem(String id, WatchlistItem item) async {
     final body = {
       'priority': item.priority,
       'metadata': item.metadata,
@@ -135,6 +135,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
+    print('Update watchlist response: ${response.body}');
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
@@ -260,5 +261,36 @@ class ApiService {
     } finally {
       client.close();
     }
+  }
+
+
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/forgot_password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    print('Forgot password response: ${response.body}'); // Debug log
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to send reset code: ${response.body}');
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/reset_password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'new_password': newPassword,
+      }),
+    );
+    print('Reset password response: ${response.body}'); // Debug log
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to reset password: ${response.body}');
   }
 }

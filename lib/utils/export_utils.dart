@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:bingebuddy/models/watchlist_item.dart';
 import 'package:bingebuddy/models/watched_item.dart';
-import 'package:flutter/material.dart'; // Added for BuildContext
+import 'package:flutter/material.dart'; 
 
 class ExportUtils {
   // Request storage permission (only for Android API < 30)
@@ -59,7 +59,7 @@ class ExportUtils {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              openAppSettings(); // Open app settings
+              openAppSettings();
             },
             child: const Text('Open Settings', style: TextStyle(color: Color(0xFF4CAF50))),
           ),

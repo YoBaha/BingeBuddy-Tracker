@@ -86,7 +86,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     if (user == null || item.id == null) return;
 
     final updatedItem = WatchlistItem(
-      id: item.id,
+      id: item.id, // String? id
       itemId: item.itemId,
       itemType: item.itemType,
       priority: priority.round().clamp(1, 5),
@@ -97,7 +97,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
       final response = await _apiService.updateWatchlistItem(item.id!, updatedItem);
       if (response['status'] == 'success') {
         setState(() {
-          final index = _watchlist.indexOf(item);
+          final index = _watchlist.indexWhere((i) => i.id == item.id);
           if (index != -1) _watchlist[index] = updatedItem;
         });
         ScaffoldMessenger.of(context).showSnackBar(

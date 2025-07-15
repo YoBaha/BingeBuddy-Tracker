@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
 import 'package:bingebuddy/screens/login_screen.dart';
+import 'package:bingebuddy/screens/forgot_password_screen.dart';
 import 'package:bingebuddy/screens/home_screen.dart';
 import 'package:bingebuddy/screens/watchlist_screen.dart';
 import 'package:bingebuddy/screens/landing_screen.dart';
 import 'package:bingebuddy/screens/profile_screen.dart';
+import 'package:bingebuddy/screens/signup_screen.dart';
 import 'package:bingebuddy/bottom_navigation.dart';
 
 void main() async {
@@ -47,10 +49,12 @@ class BingeBuddyApp extends StatelessWidget {
                 },
               ),
           '/login': (context) => const LoginScreen(),
+          '/forgot_password': (context) => const ForgotPasswordScreen(),
           '/home': (context) => const HomeScreen(),
           '/watchlist': (context) => const WatchlistScreen(),
           '/landing': (context) => const LandingScreen(),
           '/profile': (context) => const ProfileScreen(),
+          '/signup': (context) => const SignupScreen(),
         },
       ),
     );

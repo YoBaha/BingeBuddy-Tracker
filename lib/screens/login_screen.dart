@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
 import 'package:bingebuddy/screens/signup_screen.dart';
+import 'package:bingebuddy/screens/forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -47,18 +48,18 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final logoSize = screenWidth * 0.5; // Reduced to 50% for better fit
+    final logoSize = screenWidth * 0.5;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Allow resizing for keyboard
-      backgroundColor: const Color(0xFF1F1D2B), // Ensure scaffold background matches
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFF1F1D2B),
       appBar: AppBar(
         title: const Text('BingeBuddy', style: TextStyle(color: Color(0xFFFFFFFF))),
         backgroundColor: const Color(0xFF1F1D2B),
       ),
       body: SizedBox.expand(
         child: Container(
-          color: const Color(0xFF1F1D2B), // Ensure container covers all
+          color: const Color(0xFF1F1D2B),
           child: SafeArea(
             child: SingleChildScrollView(
               physics: const ClampingScrollPhysics(),
@@ -122,14 +123,28 @@ class _LoginScreenState extends State<LoginScreen> {
                             padding: const EdgeInsets.only(top: 10),
                             child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFFF72585))),
                           ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                          ),
+                          child: const Text(
+                            'Forgot Password?',
+                            style: TextStyle(color: Color(0xFF12CDC9)),
+                          ),
+                        ),
                         TextButton(
                           onPressed: () => Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(builder: (context) => const SignupScreen()),
                           ),
-                          child: const Text('Need an account? Sign up', style: TextStyle(color: Color(0xFF12CDC9))),
+                          child: const Text(
+                            'Need an account? Sign up',
+                            style: TextStyle(color: Color(0xFF12CDC9)),
+                          ),
                         ),
-                        const SizedBox(height: 20), // Bottom padding
+                        const SizedBox(height: 20),
                       ],
                     ),
                   ),

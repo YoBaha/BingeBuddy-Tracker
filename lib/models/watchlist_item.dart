@@ -1,8 +1,8 @@
 class WatchlistItem {
-  final int? id; // Matches the id column in the watchlist table
+  final String? id;
   final String itemId;
   final String itemType;
-  final int priority; // Use priority as the rating
+  final int priority; 
   final Map<String, dynamic> metadata;
 
   WatchlistItem({
@@ -15,11 +15,13 @@ class WatchlistItem {
 
   factory WatchlistItem.fromJson(Map<String, dynamic> json) {
     return WatchlistItem(
-      id: json['id'],
-      itemId: json['item_id'],
-      itemType: json['item_type'],
-      priority: json['priority'] ?? 1, // Default to 1 if not present
-      metadata: json['metadata'] ?? {},
+      id: json['id']?.toString(), 
+      itemId: json['item_id'] as String? ?? '',
+      itemType: json['item_type'] as String? ?? '',
+      priority: json['priority'] is String
+          ? int.parse(json['priority'])
+          : (json['priority'] as num?)?.toInt() ?? 1,
+      metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
     );
   }
 
