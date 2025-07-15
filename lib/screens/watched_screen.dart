@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:bingebuddy/models/watched_item.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
 import 'package:bingebuddy/services/api_service.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:bingebuddy/utils/export_utils.dart';
 
 class WatchedScreen extends StatefulWidget {
   const WatchedScreen({super.key});
@@ -13,7 +15,7 @@ class WatchedScreen extends StatefulWidget {
 
 class _WatchedScreenState extends State<WatchedScreen> {
   final ApiService _apiService = ApiService();
-  List<dynamic> _watchedItems = [];
+  List<WatchedItem> _watchedItems = [];
   bool _isLoading = false;
   String? _errorMessage;
   String _selectedFilter = 'All';
@@ -33,7 +35,12 @@ class _WatchedScreenState extends State<WatchedScreen> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final user = authProvider.user;
-      if (user == null) return;
+      if (user == null) {
+        setState(() {
+          _errorMessage = 'Please log in to view your watched items';
+        });
+        return;
+      }
 
       final response = await _apiService.getWatchedItems(user.userId);
       setState(() {
@@ -41,6 +48,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      print('Error fetching watched items: $e');
       setState(() {
         _isLoading = false;
         _errorMessage = 'Error fetching watched items: $e';
@@ -48,59 +56,110 @@ class _WatchedScreenState extends State<WatchedScreen> {
     }
   }
 
-  Future<void> _removeFromWatched(int id, String itemId, String itemType) async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final user = authProvider.user;
-      if (user == null) return;
+  Future<void> _removeFromWatched(WatchedItem item) async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null || item.id == null) return;
 
-      await _apiService.removeFromWatched(user.userId, itemId, itemType);
+    try {
+      await _apiService.removeFromWatched(user.userId, item.itemId, item.itemType);
       setState(() {
-        _watchedItems.removeWhere((item) => item['id'] == id);
+        _watchedItems.remove(item);
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Removed from watched list')),
+        SnackBar(content: Text('Removed ${item.metadata['title'] ?? item.metadata['name'] ?? 'Unknown'} from watched list')),
       );
     } catch (e) {
+      print('Error removing from watched: $e');
       setState(() {
         _errorMessage = 'Error removing item: $e';
       });
     }
   }
 
-  Future<void> _updateRating(int id, int newRating) async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final user = authProvider.user;
-      if (user == null) return;
+  Future<void> _updateRating(WatchedItem item, int newRating) async {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user == null || item.id == null) return;
 
-      final item = _watchedItems.firstWhere((item) => item['id'] == id);
-      await _apiService.updateWatchedItem(id, newRating, item['metadata']);
+    try {
+      await _apiService.updateWatchedItem(item.id!, newRating, item.metadata);
       setState(() {
-        item['rating'] = newRating;
+        final index = _watchedItems.indexOf(item);
+        if (index != -1) {
+          _watchedItems[index] = WatchedItem(
+            id: item.id,
+            itemId: item.itemId,
+            itemType: item.itemType,
+            rating: newRating,
+            metadata: item.metadata,
+          );
+        }
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Rating updated to $newRating')),
       );
     } catch (e) {
+      print('Error updating rating: $e');
       setState(() {
         _errorMessage = 'Error updating rating: $e';
       });
     }
   }
 
-  List<dynamic> _getItemsByRatingRange(int min, int max) {
+  Future<void> _exportWatched(String format) async {
+    if (_watchedItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Watched list is empty')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      String path;
+      String subject = 'My BingeBuddy Watched List';
+      if (format == 'csv') {
+        path = await ExportUtils.exportWatchedToCsv(_watchedItems, context);
+      } else {
+        path = await ExportUtils.exportWatchedToPdf(_watchedItems, context);
+      }
+      await ExportUtils.shareFile(path, subject);
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Watched list exported as $format')),
+      );
+    } catch (e) {
+      print('Error exporting watched list: $e');
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error exporting watched list: $e';
+      });
+      if (e.toString().contains('Storage permission denied')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission denied. Please enable it in settings.')),
+        );
+      }
+    }
+  }
+
+  List<WatchedItem> _getItemsByRatingRange(int min, int max) {
     return _watchedItems
-        .where((item) => item['rating'] >= min && item['rating'] <= max)
+        .where((item) => item.rating >= min && item.rating <= max)
         .toList()
-      ..sort((a, b) => b['rating'].compareTo(a['rating']));
+      ..sort((a, b) => b.rating.compareTo(a.rating));
   }
 
   Widget _buildRatingSection(String title, String subtitle, int minRating, int maxRating) {
     final items = _getItemsByRatingRange(minRating, maxRating);
-    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) return const SizedBox.shrink();
+    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) {
+      return const SizedBox.shrink();
+    }
 
-    // Show only if filter matches or no filter is applied
     if (_selectedFilter == 'Low' && minRating != 1) return const SizedBox.shrink();
     if (_selectedFilter == 'Medium' && minRating != 2) return const SizedBox.shrink();
     if (_selectedFilter == 'High' && minRating != 4) return const SizedBox.shrink();
@@ -147,12 +206,12 @@ class _WatchedScreenState extends State<WatchedScreen> {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
-            final title = item['metadata']['title'] ?? item['metadata']['name'] ?? 'Unknown';
-            final imageUrl = item['metadata']['poster_path'] != null
-                ? 'https://image.tmdb.org/t/p/w500${item['metadata']['poster_path']}'
+            final title = item.metadata['title'] ?? item.metadata['name'] ?? 'Unknown';
+            final imageUrl = item.metadata['poster_path'] != null
+                ? 'https://image.tmdb.org/t/p/w500${item.metadata['poster_path']}'
                 : null;
             return Card(
-              color: Color(0xFF252736),
+              color: const Color(0xFF252736),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
                 side: const BorderSide(color: Color(0xFF4CAF50), width: 0.5),
@@ -176,7 +235,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         RatingBar.builder(
-                          initialRating: item['rating'].toDouble(),
+                          initialRating: item.rating.toDouble(),
                           minRating: 1,
                           maxRating: 5,
                           direction: Axis.horizontal,
@@ -188,11 +247,11 @@ class _WatchedScreenState extends State<WatchedScreen> {
                             color: Color(0xFF4CAF50),
                           ),
                           onRatingUpdate: (rating) {
-                            _updateRating(item['id'], rating.round());
+                            _updateRating(item, rating.round());
                           },
                         ),
                         Text(
-                          '$title (${item['item_type']})',
+                          '$title (${item.itemType})',
                           style: const TextStyle(color: Color(0xFFEAEAEA)),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -202,7 +261,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete, color: Color(0xFFF72585)),
-                    onPressed: () => _removeFromWatched(item['id'], item['item_id'], item['item_type']),
+                    onPressed: () => _removeFromWatched(item),
                     tooltip: 'Remove from Watched',
                   ),
                 ],
@@ -227,6 +286,37 @@ class _WatchedScreenState extends State<WatchedScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share, color: Color(0xFFFFFFFF)),
+            onPressed: () async {
+              await showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF252736),
+                builder: (context) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.description, color: Color(0xFF4CAF50)),
+                      title: const Text('Export as CSV', style: TextStyle(color: Color(0xFFEAEAEA))),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _exportWatched('csv');
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.picture_as_pdf, color: Color(0xFF4CAF50)),
+                      title: const Text('Export as PDF', style: TextStyle(color: Color(0xFFEAEAEA))),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _exportWatched('pdf');
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: 'Export Watched List',
+          ),
           if (authProvider.user != null)
             IconButton(
               icon: const Icon(Icons.logout, color: Color(0xFFFFFFFF)),
@@ -234,6 +324,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
                 await authProvider.logout();
                 Navigator.pushReplacementNamed(context, '/login');
               },
+              tooltip: 'Logout',
             ),
         ],
       ),

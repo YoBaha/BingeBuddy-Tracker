@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSFileProviderDomainUsageDescription</key>
+<string>This app uses local storage to save files securely.</string>
+<key>NSDocumentsFolderUsageDescription</key>
+<string>This app needs access to save and manage files locally.</string>
 </dict>
 </plist>

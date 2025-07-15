@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:bingebuddy/models/watchlist_item.dart';
+import 'package:bingebuddy/models/watched_item.dart'; // Add this import
 
 class ApiService {
   static const String baseUrl = 'http://10.0.2.2:8080/api';
@@ -52,7 +53,6 @@ class ApiService {
     throw Exception('Failed to load trending TV shows: ${response.body}');
   }
 
-
   Future<Map<String, dynamic>> searchTv(String query) async {
     final response = await http.get(Uri.parse('$baseUrl/tv/search?query=$query'));
     if (response.statusCode == 200) {
@@ -61,9 +61,8 @@ class ApiService {
     throw Exception('Failed to search TV shows: ${response.body}');
   }
 
-
   // BingeBuddy: Add to watchlist
-Future<Map<String, dynamic>> addToWatchlist({
+  Future<Map<String, dynamic>> addToWatchlist({
     required String userId,
     required String itemId,
     required String itemType,
@@ -88,7 +87,6 @@ Future<Map<String, dynamic>> addToWatchlist({
     throw Exception('Failed to add to watchlist: ${response.body}');
   }
 
-
   // BingeBuddy: Get watchlist
   Future<List<WatchlistItem>> getWatchlist(String userId) async {
     final response = await http.get(Uri.parse('$baseUrl/watchlist/$userId?sort=priority'));
@@ -100,6 +98,7 @@ Future<Map<String, dynamic>> addToWatchlist({
     }
     throw Exception('Failed to load watchlist: ${response.body}');
   }
+
   // New method to fetch user details
   Future<Map<String, dynamic>> getUserDetails(String userId) async {
     final response = await http.get(Uri.parse('$baseUrl/user/$userId'));
@@ -109,7 +108,7 @@ Future<Map<String, dynamic>> addToWatchlist({
     throw Exception('Failed to load user details: ${response.body}');
   }
 
-    // New method to delete user
+  // New method to delete user
   Future<Map<String, dynamic>> deleteUser(String userId) async {
     final response = await http.delete(Uri.parse('$baseUrl/delete_user/$userId'));
     if (response.statusCode == 200) {
@@ -128,7 +127,7 @@ Future<Map<String, dynamic>> addToWatchlist({
 
   Future<Map<String, dynamic>> updateWatchlistItem(int id, WatchlistItem item) async {
     final body = {
-      'priority': item.priority, // Use priority as rating
+      'priority': item.priority,
       'metadata': item.metadata,
     };
     final response = await http.put(
@@ -142,16 +141,19 @@ Future<Map<String, dynamic>> addToWatchlist({
     throw Exception('Failed to update watchlist item: ${response.body}');
   }
 
-// everything for already watched items
-
-  Future<List<dynamic>> getWatchedItems(String userId) async {
-    final response = await http.get(Uri.parse('$baseUrl/watched/$userId'));
+  // BingeBuddy: Get watched items
+  Future<List<WatchedItem>> getWatchedItems(String userId) async {
+    final response = await http.get(Uri.parse('$baseUrl/watched/$userId?sort=rating'));
+    print('Requesting watched items: ${'$baseUrl/watched/$userId?sort=rating'}');
+    print('Response status: ${response.statusCode}, body: ${response.body}');
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load watched items: ${response.body}');
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((item) => WatchedItem.fromJson(item)).toList();
     }
+    throw Exception('Failed to load watched items: ${response.body}');
   }
+
+  // BingeBuddy: Add to watched
   Future<Map<String, dynamic>> addToWatched({
     required String userId,
     required String itemId,
@@ -171,48 +173,52 @@ Future<Map<String, dynamic>> addToWatchlist({
       }),
     );
     if (response.statusCode == 201) {
-      return jsonDecode(response.body); // Return the response body
-    } else {
-      throw Exception('Failed to add to watched: ${response.body}');
+      return jsonDecode(response.body);
     }
+    throw Exception('Failed to add to watched: ${response.body}');
   }
 
-
-  Future<void> removeFromWatched(String userId, String itemId, String itemType) async {
+  // BingeBuddy: Remove from watched
+  Future<Map<String, dynamic>> removeFromWatched(String userId, String itemId, String itemType) async {
     final response = await http.delete(
       Uri.parse('$baseUrl/remove_from_watched/$userId/$itemId/$itemType'),
+      headers: {'Content-Type': 'application/json'},
     );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to remove from watched: ${response.body}');
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
     }
+    throw Exception('Failed to remove from watched: ${response.body}');
   }
 
-  Future<void> updateWatchedItem(int id, int rating, Map<String, dynamic> metadata) async {
+  // BingeBuddy: Update watched item
+  Future<Map<String, dynamic>> updateWatchedItem(String id, int rating, Map<String, dynamic> metadata) async {
     final response = await http.put(
       Uri.parse('$baseUrl/watched/$id'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'rating': rating, 'metadata': metadata}),
     );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update watched item: ${response.body}');
-    }
-  }
-  //fetch item details (movie or TV)
-Future<Map<String, dynamic>> getItemDetails(String mediaType, int id) async {
-  try {
-    final uri = Uri.parse('$baseUrl/$mediaType/$id');
-    print('Requesting: $uri');
-    final response = await http.get(uri).timeout(Duration(seconds: 10));
-    print('Response status: ${response.statusCode}, body: ${response.body}');
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to load details for $mediaType: ${response.body}');
-  } catch (e, stackTrace) {
-    print('Network error: $e\nStack trace: $stackTrace');
-    rethrow;
+    throw Exception('Failed to update watched item: ${response.body}');
   }
-}
+
+  // Fetch item details (movie or TV)
+  Future<Map<String, dynamic>> getItemDetails(String mediaType, int id) async {
+    try {
+      final uri = Uri.parse('$baseUrl/$mediaType/$id');
+      print('Requesting: $uri');
+      final response = await http.get(uri).timeout(Duration(seconds: 10));
+      print('Response status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception('Failed to load details for $mediaType: ${response.body}');
+    } catch (e, stackTrace) {
+      print('Network error: $e\nStack trace: $stackTrace');
+      rethrow;
+    }
+  }
 
   Future<Map<String, dynamic>> getMovieRecommendations(int movieId) async {
     final uri = Uri.parse('$baseUrl/movie/$movieId/recommendations');
@@ -255,8 +261,4 @@ Future<Map<String, dynamic>> getItemDetails(String mediaType, int id) async {
       client.close();
     }
   }
-
-
-
-
 }

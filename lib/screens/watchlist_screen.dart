@@ -4,6 +4,7 @@ import 'package:bingebuddy/models/watchlist_item.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
 import 'package:bingebuddy/services/api_service.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:bingebuddy/utils/export_utils.dart';
 
 class WatchlistScreen extends StatefulWidget {
   const WatchlistScreen({super.key});
@@ -27,7 +28,12 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
 
   Future<void> _fetchWatchlist() async {
     final user = Provider.of<AuthProvider>(context, listen: false).user;
-    if (user == null) return;
+    if (user == null) {
+      setState(() {
+        _errorMessage = 'Please log in to view your watchlist';
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -110,6 +116,48 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     }
   }
 
+  Future<void> _exportWatchlist(String format) async {
+    if (_watchlist.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Watchlist is empty')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      String path;
+      String subject = 'My BingeBuddy Watchlist';
+      if (format == 'csv') {
+        path = await ExportUtils.exportWatchlistToCsv(_watchlist, context);
+      } else {
+        path = await ExportUtils.exportWatchlistToPdf(_watchlist, context);
+      }
+      await ExportUtils.shareFile(path, subject);
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Watchlist exported as $format')),
+      );
+    } catch (e) {
+      print('Error exporting watchlist: $e');
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error exporting watchlist: $e';
+      });
+      if (e.toString().contains('Storage permission denied')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission denied. Please enable it in settings.')),
+        );
+      }
+    }
+  }
+
   List<WatchlistItem> _getItemsByPriorityRange(int min, int max) {
     return _watchlist
         .where((item) => item.priority >= min && item.priority <= max)
@@ -119,9 +167,10 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
 
   Widget _buildPrioritySection(String title, String subtitle, int minPriority, int maxPriority) {
     final items = _getItemsByPriorityRange(minPriority, maxPriority);
-    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) return const SizedBox.shrink();
+    if (items.isEmpty || _selectedFilter != 'All' && !['Low', 'Medium', 'High'].contains(_selectedFilter)) {
+      return const SizedBox.shrink();
+    }
 
-    // Show only if filter matches or no filter is applied
     if (_selectedFilter == 'Low' && minPriority != 1) return const SizedBox.shrink();
     if (_selectedFilter == 'Medium' && minPriority != 2) return const SizedBox.shrink();
     if (_selectedFilter == 'High' && minPriority != 4) return const SizedBox.shrink();
@@ -168,12 +217,12 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
-            final title = item.metadata['title'] ?? 'Unknown';
+            final title = item.metadata['title'] ?? item.metadata['name'] ?? 'Unknown';
             final imageUrl = item.metadata['poster_path'] != null
                 ? 'https://image.tmdb.org/t/p/w500${item.metadata['poster_path']}'
                 : null;
             return Card(
-              color: Color(0xFF252736),
+              color: const Color(0xFF252736),
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               child: Column(
@@ -254,6 +303,37 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share, color: Color(0xFFFFFFFF)),
+            onPressed: () async {
+              await showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF252736),
+                builder: (context) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.description, color: Color(0xFF12CDC9)),
+                      title: const Text('Export as CSV', style: TextStyle(color: Color(0xFFEAEAEA))),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _exportWatchlist('csv');
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.picture_as_pdf, color: Color(0xFF12CDC9)),
+                      title: const Text('Export as PDF', style: TextStyle(color: Color(0xFFEAEAEA))),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _exportWatchlist('pdf');
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: 'Export Watchlist',
+          ),
           if (authProvider.user != null)
             IconButton(
               icon: const Icon(Icons.logout, color: Color(0xFFFFFFFF)),
@@ -261,6 +341,7 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
                 await authProvider.logout();
                 Navigator.pushReplacementNamed(context, '/login');
               },
+              tooltip: 'Logout',
             ),
         ],
       ),
