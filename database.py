@@ -1,117 +1,102 @@
-import sqlite3
+from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+import os
+from datetime import datetime, timedelta
+
+# Load environment variables
+load_dotenv()
+MONGO_URI = os.getenv('MONGO_URI')
+
+# Initialize MongoDB client
+client = MongoClient(MONGO_URI)
+db = client['bingebuddy']  # Database name
 
 def init_db():
-    conn = sqlite3.connect('cache.db')
-    cursor = conn.cursor()
-    # Users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    ''')
-    # Cache table with timestamp
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cache (
-            type TEXT PRIMARY KEY,
-            data TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    # Watchlist table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS watchlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            item_id TEXT,
-            item_type TEXT,
-            priority INTEGER,
-            metadata TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    # Watched table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS watched (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            item_id TEXT,
-            item_type TEXT,
-            rating INTEGER,  -- Rating from 1 to 5
-            metadata TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def add_metadata_column():
-    try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute('ALTER TABLE watchlist ADD COLUMN metadata TEXT')
-        cursor.execute('ALTER TABLE watched ADD COLUMN metadata TEXT')  # Add to watched table
-        conn.commit()
-        conn.close()
-        print("Added metadata column to watchlist and watched tables")
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" in str(e):
-            print("Metadata column already exists")
-        else:
-            raise e
-
-def add_timestamp_column():
-    try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute('ALTER TABLE cache ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP')
-        conn.commit()
-        conn.close()
-        print("Added timestamp column to cache table")
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" in str(e):
-            print("Timestamp column already exists")
-        else:
-            raise e
+    # Create indexes for efficient queries and uniqueness
+    db.users.create_index("username", unique=True)
+    db.users.create_index("email", unique=True)
+    db.watchlist.create_index([("user_id", 1), ("item_id", 1), ("item_type", 1)], unique=True)
+    db.watched.create_index([("user_id", 1), ("item_id", 1), ("item_type", 1)], unique=True)
+    db.cache.create_index("type", unique=True)
+    db.reset_codes.create_index("email", unique=True)  # Index for reset codes
+    db.reset_codes.create_index("created_at", expireAfterSeconds=600)  # Codes expire after 10 minutes
+    print("Initialized MongoDB collections with indexes")
 
 def register_user(user_id, username, email, password):
     password_hash = generate_password_hash(password)
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO users (user_id, username, email, password_hash) VALUES (?, ?, ?, ?)',
-                       (user_id, username, email, password_hash))
-        conn.commit()
-        conn.close()
+        db.users.insert_one({
+            "user_id": user_id,
+            "username": username,
+            "email": email,
+            "password_hash": password_hash
+        })
         return True
-    except sqlite3.IntegrityError:
-        return False  
+    except Exception as e:
+        if "E11000 duplicate key error" in str(e):
+            return False
+        raise e
 
 def authenticate_user(username_or_email, password):
-    conn = sqlite3.connect('cache.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT user_id, password_hash FROM users WHERE username = ? OR email = ?',
-                   (username_or_email, username_or_email))
-    user = cursor.fetchone()
-    conn.close()
-    if user and check_password_hash(user[1], password):
-        return user[0]  
+    user = db.users.find_one({"$or": [{"username": username_or_email}, {"email": username_or_email}]})
+    if user and check_password_hash(user['password_hash'], password):
+        return user['user_id']
     return None
 
 def save_to_cache(type, data):
-    conn = sqlite3.connect('cache.db')
-    cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO cache (type, data, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)', (type, data))
-    conn.commit()
-    conn.close()
+    db.cache.replace_one(
+        {"type": type},
+        {"type": type, "data": data, "timestamp": datetime.utcnow()},
+        upsert=True
+    )
 
 def get_from_cache(type):
-    conn = sqlite3.connect('cache.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT data FROM cache WHERE type = ? AND timestamp > datetime("now", "-1 day")', (type,))
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
+    cache_entry = db.cache.find_one({"type": type})
+    if cache_entry:
+        # Check if cache is less than 1 day old
+        if cache_entry['timestamp'] > datetime.utcnow() - timedelta(days=1):
+            return cache_entry['data']
+    return None
+
+def store_reset_code(email, code):
+    """Store a 4-digit code for the given email, replacing any existing code."""
+    try:
+        db.reset_codes.replace_one(
+            {"email": email},
+            {
+                "email": email,
+                "code": code,
+                "created_at": datetime.utcnow()
+            },
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"Error storing reset code: {str(e)}")
+        return False
+
+def verify_reset_code(email, code):
+    """Verify if the provided code matches the stored code for the email."""
+    reset_entry = db.reset_codes.find_one({"email": email})
+    if reset_entry and reset_entry['code'] == code:
+        # Code is valid; TTL index handles expiration
+        return True
+    return False
+
+def update_user_password(email, new_password):
+    """Update the user's password by email."""
+    password_hash = generate_password_hash(new_password)
+    try:
+        result = db.users.update_one(
+            {"email": email},
+            {"$set": {"password_hash": password_hash}}
+        )
+        if result.matched_count == 0:
+            return False
+        # Delete the used reset code
+        db.reset_codes.delete_one({"email": email})
+        return True
+    except Exception as e:
+        print(f"Error updating password: {str(e)}")
+        return False

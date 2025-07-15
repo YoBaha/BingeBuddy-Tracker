@@ -4,8 +4,21 @@ import os
 import requests
 import json
 import uuid
-import sqlite3
-from database import init_db, add_metadata_column, add_timestamp_column, register_user, authenticate_user, save_to_cache, get_from_cache
+import smtplib  # Add for email sending
+import random   # Add for 4-digit code generation
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+from email.mime.text import MIMEText  # Add for email formatting
+from database import (  # Import required database functions
+    init_db,
+    register_user,
+    authenticate_user,
+    save_to_cache,
+    get_from_cache,
+    store_reset_code,
+    verify_reset_code,
+    update_user_password
+)
 
 app = Flask(__name__)
 
@@ -13,11 +26,18 @@ app = Flask(__name__)
 load_dotenv()
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 TMDB_BASE_URL = os.getenv('TMDB_BASE_URL')
+MONGO_URI = os.getenv('MONGO_URI')
+SMTP_HOST = os.getenv('SMTP_HOST')
+SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+SMTP_EMAIL = os.getenv('SMTP_EMAIL')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+
+# Initialize MongoDB client
+client = MongoClient(MONGO_URI)
+db = client['bingebuddy']
 
 # Initialize database
 init_db()
-add_metadata_column()
-add_timestamp_column()
 
 # Register a new user
 @app.route('/api/register', methods=['POST'])
@@ -135,7 +155,7 @@ def add_to_watchlist():
     user_id = data.get('user_id')
     item_id = data.get('item_id')
     item_type = data.get('item_type')
-    priority = data.get('priority', 1)  # Default to 1 if not provided
+    priority = data.get('priority', 1)
     metadata = data.get('metadata', {})
 
     valid_item_types = ['movie', 'tv']
@@ -143,17 +163,17 @@ def add_to_watchlist():
         return jsonify({'error': 'user_id, item_id, and valid item_type (movie, tv) are required'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO watchlist (user_id, item_id, item_type, priority, metadata) VALUES (?, ?, ?, ?, ?)',
-            (user_id, item_id, item_type, priority, json.dumps(metadata))
-        )
-        conn.commit()
-        new_id = cursor.lastrowid
-        conn.close()
-        return jsonify({'status': 'success', 'id': new_id}), 201
-    except sqlite3.Error as e:
+        result = db.watchlist.insert_one({
+            'user_id': user_id,
+            'item_id': item_id,
+            'item_type': item_type,
+            'priority': priority,
+            'metadata': metadata
+        })
+        return jsonify({'status': 'success', 'id': str(result.inserted_id)}), 201
+    except Exception as e:
+        if "E11000 duplicate key error" in str(e):
+            return jsonify({'error': 'Item already exists in watchlist'}), 409
         return jsonify({'error': str(e)}), 500
 
 # Get user watchlist
@@ -165,25 +185,19 @@ def get_watchlist(user_id):
         return jsonify({'error': 'Invalid sort field'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT id, item_id, item_type, priority, metadata FROM watchlist WHERE user_id = ? ORDER BY ?',
-            (user_id, sort_by)
-        )
-        items = cursor.fetchall()
-        conn.close()
+        sort_order = -1 if sort_by == 'priority' else 1  # Descending for priority
+        items = db.watchlist.find({'user_id': user_id}).sort(sort_by, sort_order)
         watchlist = [
             {
-                'id': item[0],
-                'item_id': item[1],
-                'item_type': item[2],
-                'priority': item[3],
-                'metadata': json.loads(item[4]) if item[4] else {}
+                'id': str(item['_id']),
+                'item_id': item['item_id'],
+                'item_type': item['item_type'],
+                'priority': item['priority'],
+                'metadata': item['metadata']
             } for item in items
         ]
         return jsonify(watchlist)
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Add to watched
@@ -193,7 +207,7 @@ def add_to_watched():
     user_id = data.get('user_id')
     item_id = data.get('item_id')
     item_type = data.get('item_type')
-    rating = data.get('rating', 1)  # Default to 1 if not provided, range 1-5
+    rating = data.get('rating', 1)
     metadata = data.get('metadata', {})
 
     valid_item_types = ['movie', 'tv']
@@ -201,17 +215,17 @@ def add_to_watched():
         return jsonify({'error': 'user_id, item_id, valid item_type (movie, tv), and rating (1-5) are required'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO watched (user_id, item_id, item_type, rating, metadata) VALUES (?, ?, ?, ?, ?)',
-            (user_id, item_id, item_type, rating, json.dumps(metadata))
-        )
-        conn.commit()
-        new_id = cursor.lastrowid
-        conn.close()
-        return jsonify({'status': 'success', 'id': new_id}), 201
-    except sqlite3.Error as e:
+        result = db.watched.insert_one({
+            'user_id': user_id,
+            'item_id': item_id,
+            'item_type': item_type,
+            'rating': rating,
+            'metadata': metadata
+        })
+        return jsonify({'status': 'success', 'id': str(result.inserted_id)}), 201
+    except Exception as e:
+        if "E11000 duplicate key error" in str(e):
+            return jsonify({'error': 'Item already exists in watched list'}), 409
         return jsonify({'error': str(e)}), 500
 
 # Get user watched items
@@ -223,25 +237,19 @@ def get_watched(user_id):
         return jsonify({'error': 'Invalid sort field'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT id, item_id, item_type, rating, metadata FROM watched WHERE user_id = ? ORDER BY ?',
-            (user_id, sort_by)
-        )
-        items = cursor.fetchall()
-        conn.close()
+        sort_order = -1 if sort_by == 'rating' else 1  # Descending for rating
+        items = db.watched.find({'user_id': user_id}).sort(sort_by, sort_order)
         watched = [
             {
-                'id': item[0],
-                'item_id': item[1],
-                'item_type': item[2],
-                'rating': item[3],
-                'metadata': json.loads(item[4]) if item[4] else {}
+                'id': str(item['_id']),
+                'item_id': item['item_id'],
+                'item_type': item['item_type'],
+                'rating': item['rating'],
+                'metadata': item['metadata']
             } for item in items
         ]
         return jsonify(watched)
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Remove from watched
@@ -252,82 +260,65 @@ def remove_from_watched(user_id, item_id, item_type):
         return jsonify({'error': 'Invalid item_type (must be movie or tv)'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'DELETE FROM watched WHERE user_id = ? AND item_id = ? AND item_type = ?',
-            (user_id, item_id, item_type)
-        )
-        if cursor.rowcount == 0:
-            conn.close()
+        result = db.watched.delete_one({
+            'user_id': user_id,
+            'item_id': item_id,
+            'item_type': item_type
+        })
+        if result.deleted_count == 0:
             return jsonify({'error': 'Item not found in watched list'}), 404
-        conn.commit()
-        conn.close()
         return jsonify({'status': 'success'}), 200
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Update watched item rating
 @app.route('/api/watched/<id>', methods=['PUT'])
 def update_watched_item(id):
     data = request.json
-    rating = data.get('rating', 1)  # Update rating, range 1-5
+    rating = data.get('rating', 1)
     metadata = data.get('metadata', {})
 
     if rating not in range(1, 6):
         return jsonify({'error': 'Rating must be between 1 and 5'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE watched SET rating = ?, metadata = ? WHERE id = ?',
-            (rating, json.dumps(metadata), id)
+        from bson import ObjectId
+        result = db.watched.update_one(
+            {'_id': ObjectId(id)},
+            {'$set': {'rating': rating, 'metadata': metadata}}
         )
-        if cursor.rowcount == 0:
-            conn.close()
+        if result.matched_count == 0:
             return jsonify({'error': 'Item not found in watched list'}), 404
-        conn.commit()
-        conn.close()
         return jsonify({'status': 'success'}), 200
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Get user details
 @app.route('/api/user/<user_id>', methods=['GET'])
 def get_user_details(user_id):
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT username, email FROM users WHERE user_id = ?', (user_id,))
-        user = cursor.fetchone()
-        conn.close()
+        user = db.users.find_one({'user_id': user_id})
         if user:
             return jsonify({
                 'status': 'success',
-                'username': user[0],
-                'email': user[1]
+                'username': user['username'],
+                'email': user['email']
             })
         return jsonify({'error': 'User not found'}), 404
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Delete user
 @app.route('/api/delete_user/<user_id>', methods=['DELETE'])
 def delete_user(user_id):
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
-        if cursor.rowcount == 0:
-            conn.close()
+        user_result = db.users.delete_one({'user_id': user_id})
+        if user_result.deleted_count == 0:
             return jsonify({'error': 'User not found'}), 404
-        cursor.execute('DELETE FROM watchlist WHERE user_id = ?', (user_id,))
-        cursor.execute('DELETE FROM watched WHERE user_id = ?', (user_id,))  # Clean up watched items
-        conn.commit()
-        conn.close()
+        db.watchlist.delete_many({'user_id': user_id})
+        db.watched.delete_many({'user_id': user_id})
         return jsonify({'status': 'success'}), 200
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Remove from watchlist
@@ -338,44 +329,35 @@ def remove_from_watchlist(user_id, item_id, item_type):
         return jsonify({'error': 'Invalid item_type (must be movie or tv)'}), 400
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'DELETE FROM watchlist WHERE user_id = ? AND item_id = ? AND item_type = ?',
-            (user_id, item_id, item_type)
-        )
-        if cursor.rowcount == 0:
-            conn.close()
+        result = db.watchlist.delete_one({
+            'user_id': user_id,
+            'item_id': item_id,
+            'item_type': item_type
+        })
+        if result.deleted_count == 0:
             return jsonify({'error': 'Item not found in watchlist'}), 404
-        conn.commit()
-        conn.close()
         return jsonify({'status': 'success'}), 200
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # Update watchlist item
 @app.route('/api/watchlist/<id>', methods=['PUT'])
 def update_watchlist_item(id):
     data = request.json
-    priority = data.get('priority', 1)  # Use priority as rating
+    priority = data.get('priority', 1)
     metadata = data.get('metadata', {})
 
     try:
-        conn = sqlite3.connect('cache.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE watchlist SET priority = ?, metadata = ? WHERE id = ?',
-            (priority, json.dumps(metadata), id)
+        from bson import ObjectId
+        result = db.watchlist.update_one(
+            {'_id': ObjectId(id)},
+            {'$set': {'priority': priority, 'metadata': metadata}}
         )
-        if cursor.rowcount == 0:
-            conn.close()
+        if result.matched_count == 0:
             return jsonify({'error': 'Item not found in watchlist'}), 404
-        conn.commit()
-        conn.close()
         return jsonify({'status': 'success'}), 200
-    except sqlite3.Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 # Fetch movie details
 @app.route('/api/movie/<movie_id>', methods=['GET'])
@@ -385,7 +367,7 @@ def get_movie_details(movie_id):
     if cached_data:
         return jsonify(json.loads(cached_data))
     try:
-        url = f'{TMDB_BASE_URL}/movie/{movie_id}?api_key={TMDB_API_KEY}'  # Removed append_to_response
+        url = f'{TMDB_BASE_URL}/movie/{movie_id}?api_key={TMDB_API_KEY}'
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
@@ -411,7 +393,6 @@ def get_tv_details(tv_id):
         return jsonify(data)
     except requests.exceptions.RequestException as e:
         return jsonify({'error': str(e)}), 500
-
 
 # Fetch movie recommendations
 @app.route('/api/movie/<movie_id>/recommendations', methods=['GET'])
@@ -446,6 +427,64 @@ def get_tv_recommendations(tv_id):
         return jsonify(data)
     except requests.exceptions.RequestException as e:
         return jsonify({'error': str(e)}), 500
+
+# Forgot Password
+def send_reset_code_email(email, code):
+    """Send a 4-digit reset code to the user's email."""
+    try:
+        msg = MIMEText(f"Your BingeBuddy password reset code is: {code}\nThis code is valid for 10 minutes.")
+        msg['Subject'] = 'BingeBuddy Password Reset Code'
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = email
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.sendmail(SMTP_EMAIL, email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+        return False
+
+@app.route('/api/forgot_password', methods=['POST'])
+def forgot_password():
+    data = request.json
+    email = data.get('email')
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    # Check if user exists
+    user = db.users.find_one({"email": email})
+    if not user:
+        return jsonify({'error': 'Email not found'}), 404
+
+    # Generate 4-digit code
+    code = f"{random.randint(0, 9999):04d}"  # e.g., "1234"
+    if store_reset_code(email, code):
+        if send_reset_code_email(email, code):
+            return jsonify({'status': 'success', 'message': 'Reset code sent to email'}), 200
+        else:
+            return jsonify({'error': 'Failed to send reset code'}), 500
+    return jsonify({'error': 'Failed to generate reset code'}), 500
+
+@app.route('/api/reset_password', methods=['POST'])
+def reset_password():
+    data = request.json
+    email = data.get('email')
+    code = data.get('code')
+    new_password = data.get('new_password')
+    if not email or not code or not new_password:
+        return jsonify({'error': 'Email, code, and new password are required'}), 400
+
+    if len(new_password) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+
+    if verify_reset_code(email, code):
+        if update_user_password(email, new_password):
+            return jsonify({'status': 'success', 'message': 'Password reset successfully'}), 200
+        else:
+            return jsonify({'error': 'Failed to update password'}), 500
+    return jsonify({'error': 'Invalid or expired reset code'}), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
