@@ -369,5 +369,19 @@ Future<Map<String, dynamic>> getUserCounts(String userId) async {
       throw Exception('Error deleting log: $e');
     }
   }
+
+
+  // New method for health check
+  Future<bool> pingHealthCheck() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/healthz')).timeout(const Duration(seconds: 10));
+      print('Health check response: ${response.statusCode}, body: ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error pinging health check: $e');
+      return false;
+    }
+  }
+
 }
 

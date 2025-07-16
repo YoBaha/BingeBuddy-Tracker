@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
+import 'package:bingebuddy/services/api_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -11,6 +12,8 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  final ApiService _apiService = ApiService();
+
   @override
   void initState() {
     super.initState();
@@ -19,16 +22,24 @@ class _SplashScreenState extends State<SplashScreen> {
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       print('Building SplashScreen');
-      _checkAuth();
+      _initializeApp();
     });
   }
 
-  Future<void> _checkAuth() async {
-    print('Starting auth check');
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+  Future<void> _initializeApp() async {
+    print('Starting app initialization');
     
-    // Increased delay to ensure splash screen is visible
-    await Future.delayed(const Duration(seconds: 4));
+    // Ping health check to wake up Render backend
+    try {
+      final success = await _apiService.pingHealthCheck();
+      print(success ? 'Health check ping successful' : 'Health check ping failed');
+    } catch (e) {
+      print('Error during health check: $e');
+    }
+
+    // Check authentication status
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    await Future.delayed(const Duration(seconds: 4)); // Keep existing delay
 
     if (!mounted) return;
 

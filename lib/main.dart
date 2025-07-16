@@ -1,6 +1,5 @@
 // main.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bingebuddy/providers/auth_provider.dart';
 import 'package:bingebuddy/screens/login_screen.dart';
@@ -13,6 +12,7 @@ import 'package:bingebuddy/screens/signup_screen.dart';
 import 'package:bingebuddy/screens/splash_screen.dart';
 import 'package:bingebuddy/screens/logs_screen.dart';
 import 'package:bingebuddy/bottom_navigation.dart';
+import 'package:bingebuddy/services/api_service.dart'; // Add this import
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +55,7 @@ class BingeBuddyApp extends StatelessWidget {
           '/landing': (context) => const LandingScreen(),
           '/profile': (context) => const ProfileScreen(),
           '/signup': (context) => const SignupScreen(),
-          '/logs': (context) => const LogsScreen(), // Added
+          '/logs': (context) => const LogsScreen(),
         },
       ),
     );
