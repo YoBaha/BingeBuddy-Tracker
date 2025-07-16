@@ -1,10 +1,24 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:bingebuddy/models/watchlist_item.dart';
-import 'package:bingebuddy/models/watched_item.dart'; // Add this import
+import 'package:bingebuddy/models/watched_item.dart';
+import 'package:bingebuddy/config.dart'; // Import Config
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8080/api';
+  // Use Config.apiBaseUrl instead of hardcoded baseUrl
+  static String get baseUrl => Config.apiBaseUrl;
+
+  // BingeBuddy: Health check
+  Future<bool> pingHealthCheck() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/healthz')).timeout(const Duration(seconds: 10));
+      print('Health check response: ${response.statusCode}, body: ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error pinging health check: $e');
+      return false;
+    }
+  }
 
   // BingeBuddy: Register user
   Future<Map<String, dynamic>> register(String username, String email, String password) async {
@@ -45,6 +59,7 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  // BingeBuddy: Fetch trending TV shows
   Future<Map<String, dynamic>> getTrendingTv() async {
     final response = await http.get(Uri.parse('$baseUrl/tv/trending'));
     if (response.statusCode == 200) {
@@ -53,6 +68,7 @@ class ApiService {
     throw Exception('Failed to load trending TV shows: ${response.body}');
   }
 
+  // BingeBuddy: Search TV shows
   Future<Map<String, dynamic>> searchTv(String query) async {
     final response = await http.get(Uri.parse('$baseUrl/tv/search?query=$query'));
     if (response.statusCode == 200) {
@@ -99,7 +115,7 @@ class ApiService {
     throw Exception('Failed to load watchlist: ${response.body}');
   }
 
-  // New method to fetch user details
+  // BingeBuddy: Get user details
   Future<Map<String, dynamic>> getUserDetails(String userId) async {
     final response = await http.get(Uri.parse('$baseUrl/user/$userId'));
     if (response.statusCode == 200) {
@@ -108,7 +124,7 @@ class ApiService {
     throw Exception('Failed to load user details: ${response.body}');
   }
 
-  // New method to delete user
+  // BingeBuddy: Delete user
   Future<Map<String, dynamic>> deleteUser(String userId) async {
     final response = await http.delete(Uri.parse('$baseUrl/delete_user/$userId'));
     if (response.statusCode == 200) {
@@ -117,6 +133,7 @@ class ApiService {
     throw Exception('Failed to delete user: ${response.body}');
   }
 
+  // BingeBuddy: Remove from watchlist
   Future<Map<String, dynamic>> removeFromWatchlist(String userId, String itemId, String itemType) async {
     final response = await http.delete(Uri.parse('$baseUrl/remove_from_watchlist/$userId/$itemId/$itemType'));
     if (response.statusCode == 200) {
@@ -125,6 +142,7 @@ class ApiService {
     throw Exception('Failed to remove from watchlist: ${response.body}');
   }
 
+  // BingeBuddy: Update watchlist item
   Future<Map<String, dynamic>> updateWatchlistItem(String id, WatchlistItem item) async {
     final body = {
       'priority': item.priority,
@@ -204,7 +222,7 @@ class ApiService {
     throw Exception('Failed to update watched item: ${response.body}');
   }
 
-  // Fetch item details (movie or TV)
+  // BingeBuddy: Fetch item details (movie or TV)
   Future<Map<String, dynamic>> getItemDetails(String mediaType, int id) async {
     try {
       final uri = Uri.parse('$baseUrl/$mediaType/$id');
@@ -221,6 +239,7 @@ class ApiService {
     }
   }
 
+  // BingeBuddy: Fetch movie recommendations
   Future<Map<String, dynamic>> getMovieRecommendations(int movieId) async {
     final uri = Uri.parse('$baseUrl/movie/$movieId/recommendations');
     print('Requesting movie recommendations: $uri');
@@ -242,6 +261,7 @@ class ApiService {
     }
   }
 
+  // BingeBuddy: Fetch TV recommendations
   Future<Map<String, dynamic>> getTvRecommendations(int tvId) async {
     final uri = Uri.parse('$baseUrl/tv/$tvId/recommendations');
     print('Requesting TV recommendations: $uri');
@@ -263,7 +283,7 @@ class ApiService {
     }
   }
 
-
+  // BingeBuddy: Forgot password
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     final response = await http.post(
       Uri.parse('$baseUrl/forgot_password'),
@@ -277,6 +297,7 @@ class ApiService {
     throw Exception('Failed to send reset code: ${response.body}');
   }
 
+  // BingeBuddy: Reset password
   Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
     final response = await http.post(
       Uri.parse('$baseUrl/reset_password'),
@@ -295,26 +316,26 @@ class ApiService {
   }
 
   // BingeBuddy: Get user counts for watchlist and watched items
-Future<Map<String, dynamic>> getUserCounts(String userId) async {
-  try {
-    final response = await http.get(Uri.parse('$baseUrl/user/$userId/counts'));
-    print('Requesting user counts: $baseUrl/user/$userId/counts');
-    print('Response status: ${response.statusCode}, body: ${response.body}');
-    if (response.statusCode == 200) {
-      final jsonResponse = jsonDecode(response.body);
-      if (jsonResponse['status'] == 'success') {
-        return jsonResponse['data'];
+  Future<Map<String, dynamic>> getUserCounts(String userId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/user/$userId/counts'));
+      print('Requesting user counts: $baseUrl/user/$userId/counts');
+      print('Response status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        if (jsonResponse['status'] == 'success') {
+          return jsonResponse['data'];
+        }
+        throw Exception('Failed to fetch counts: ${jsonResponse['error']}');
       }
-      throw Exception('Failed to fetch counts: ${jsonResponse['error']}');
+      throw Exception('Failed to fetch counts: ${response.body}');
+    } catch (e) {
+      print('Error fetching user counts: $e');
+      rethrow;
     }
-    throw Exception('Failed to fetch counts: ${response.body}');
-  } catch (e) {
-    print('Error fetching user counts: $e');
-    rethrow;
   }
-}
 
-
+  // BingeBuddy: Add to logs
   Future<void> addLog(String userId, String name, int? season, int episode, String? timestamp) async {
     try {
       final response = await http.post(
@@ -338,6 +359,7 @@ Future<Map<String, dynamic>> getUserCounts(String userId) async {
     }
   }
 
+  // BingeBuddy: Get logs
   Future<List<dynamic>> getLogs(String userId) async {
     try {
       final response = await http.get(
@@ -356,7 +378,8 @@ Future<Map<String, dynamic>> getUserCounts(String userId) async {
     }
   }
 
-    Future<void> deleteLog(String logId) async {
+  // BingeBuddy: Delete log
+  Future<void> deleteLog(String logId) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/logs/$logId'),
@@ -369,19 +392,4 @@ Future<Map<String, dynamic>> getUserCounts(String userId) async {
       throw Exception('Error deleting log: $e');
     }
   }
-
-
-  // New method for health check
-  Future<bool> pingHealthCheck() async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/healthz')).timeout(const Duration(seconds: 10));
-      print('Health check response: ${response.statusCode}, body: ${response.body}');
-      return response.statusCode == 200;
-    } catch (e) {
-      print('Error pinging health check: $e');
-      return false;
-    }
-  }
-
 }
-
