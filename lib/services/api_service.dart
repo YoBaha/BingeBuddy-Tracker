@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:bingebuddy/models/watchlist_item.dart';
 import 'package:bingebuddy/models/watched_item.dart';
-import 'package:bingebuddy/config.dart'; // Import Config
+import 'package:bingebuddy/config.dart'; 
 
 class ApiService {
-  // Use Config.apiBaseUrl instead of hardcoded baseUrl
+
   static String get baseUrl => Config.apiBaseUrl;
 
   // BingeBuddy: Health check

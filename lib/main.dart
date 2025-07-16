@@ -11,11 +11,11 @@ import 'package:bingebuddy/screens/signup_screen.dart';
 import 'package:bingebuddy/screens/splash_screen.dart';
 import 'package:bingebuddy/screens/logs_screen.dart';
 import 'package:bingebuddy/bottom_navigation.dart';
-import 'package:bingebuddy/config.dart'; // Import Config
+import 'package:bingebuddy/config.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Config.loadConfig(); // Load config before app starts
+  await Config.loadConfig(); 
   final authProvider = AuthProvider();
   await authProvider.loadUser();
   runApp(BingeBuddyApp(authProvider: authProvider));

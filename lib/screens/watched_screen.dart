@@ -18,9 +18,9 @@ class _WatchedScreenState extends State<WatchedScreen> {
   List<WatchedItem> _watchedItems = [];
   bool _isLoading = false;
   String? _errorMessage;
-  String _selectedFilter = 'All'; // Rating filter
-  String _contentType = 'All'; // Content type filter: All, Movies, TV Shows
-  bool _isListView = false; // New state for view mode (false = grid, true = list)
+  String _selectedFilter = 'All'; 
+  String _contentType = 'All';
+  bool _isListView = false;
 
   @override
   void initState() {
@@ -355,7 +355,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
           IconButton(
             icon: Icon(
               _isListView ? Icons.view_module : Icons.view_list,
-              color: const Color(0xFFFFA726), // Distinct orange color
+              color: const Color(0xFFFFA726), 
             ),
             onPressed: () {
               setState(() {
@@ -522,7 +522,7 @@ class _WatchedScreenState extends State<WatchedScreen> {
                     minHeight: MediaQuery.of(context).size.height -
                         AppBar().preferredSize.height -
                         MediaQuery.of(context).padding.top -
-                        160, // Adjust for header, content type, and rating buttons
+                        160, 
                   ),
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50)))

@@ -18,9 +18,9 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
   List<WatchlistItem> _watchlist = [];
   bool _isLoading = false;
   String? _errorMessage;
-  String _selectedFilter = 'All'; // Priority filter
-  String _contentType = 'All'; // Content type filter: All, Movies, TV Shows
-  bool _isListView = false; // New state for view mode (false = grid, true = list)
+  String _selectedFilter = 'All';
+  String _contentType = 'All';
+  bool _isListView = false;
 
   @override
   void initState() {
