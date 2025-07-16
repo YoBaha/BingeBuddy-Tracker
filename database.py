@@ -23,6 +23,10 @@ def init_db():
     db.reset_codes.create_index("created_at", expireAfterSeconds=600)  # Codes expire after 10 minutes
     print("Initialized MongoDB collections with indexes")
 
+        # New logs collection index
+    db.logs.create_index([("user_id", 1), ("created_at", -1)])  # Index for user-specific logs, sorted by creation time
+    print("Initialized MongoDB collections with indexes")
+
 def register_user(user_id, username, email, password):
     password_hash = generate_password_hash(password)
     try:

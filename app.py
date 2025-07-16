@@ -8,6 +8,7 @@ import smtplib  # Add for email sending
 import random   # Add for 4-digit code generation
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+from bson import ObjectId
 from email.mime.text import MIMEText  # Add for email formatting
 from database import (  # Import required database functions
     init_db,
@@ -38,6 +39,12 @@ db = client['bingebuddy']
 
 # Initialize database
 init_db()
+
+
+# Health check endpoint to keep Render service awake
+@app.route('/healthz', methods=['GET'])
+def healthz():
+    return jsonify({'status': 'OK'}), 200
 
 # Register a new user
 @app.route('/api/register', methods=['POST'])
@@ -526,6 +533,64 @@ def get_user_counts(user_id):
         }), 200
     except Exception as e:
         return jsonify({'error': f'Failed to fetch counts: {str(e)}'}), 500
+
+
+
+# Add to watched logs
+@app.route('/api/logs', methods=['POST'])
+def add_log():
+    data = request.json
+    user_id = data.get('user_id')
+    name = data.get('name')
+    season = data.get('season')  # Can be null
+    episode = data.get('episode')
+    timestamp = data.get('timestamp')  # Can be null
+
+    if not user_id or not name or episode is None:
+        return jsonify({'error': 'user_id, name, and episode are required'}), 400
+
+    try:
+        result = db.logs.insert_one({
+            'user_id': user_id,
+            'name': name,
+            'season': season,
+            'episode': episode,
+            'timestamp': timestamp,
+            'created_at': datetime.utcnow()
+        })
+        return jsonify({'status': 'success', 'id': str(result.inserted_id)}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get user logs
+@app.route('/api/logs/<user_id>', methods=['GET'])
+def get_logs(user_id):
+    try:
+        logs = db.logs.find({'user_id': user_id}).sort('created_at', -1)  # Sort by newest first
+        log_list = [
+            {
+                'id': str(log['_id']),
+                'name': log['name'],
+                'season': log.get('season'),
+                'episode': log['episode'],
+                'timestamp': log.get('timestamp'),
+                'created_at': log['created_at'].isoformat()
+            } for log in logs
+        ]
+        return jsonify(log_list), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/logs/<log_id>', methods=['DELETE'])
+def delete_log(log_id):
+    try:
+        result = db.logs.delete_one({'_id': ObjectId(log_id)})
+        if result.deleted_count == 0:
+            return jsonify({'error': 'Log not found'}), 404
+        return jsonify({'status': 'success'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
